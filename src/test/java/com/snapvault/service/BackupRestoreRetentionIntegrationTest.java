@@ -1,6 +1,8 @@
 package com.snapvault.service;
 
 import com.snapvault.catalog.ChunkRepository;
+import com.snapvault.catalog.FileChunkRepository;
+import com.snapvault.catalog.FileRepository;
 import com.snapvault.catalog.SnapshotRepository;
 import com.snapvault.config.AppConfig;
 import com.snapvault.model.Snapshot;
@@ -12,9 +14,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.Statement;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,8 +33,36 @@ class BackupRestoreRetentionIntegrationTest {
     @Autowired private VerifyService verifyService;
     @Autowired private SnapshotRepository snapshotRepo;
     @Autowired private ChunkRepository chunkRepo;
+    @Autowired private FileRepository fileRepo;
+    @Autowired private FileChunkRepository fileChunkRepo;
     @Autowired private ChunkStorage chunkStorage;
     @Autowired private AppConfig appConfig;
+    @Autowired private DataSource dataSource;
+
+    @BeforeEach
+    void cleanState() throws Exception {
+        // Reset in-memory database tables between test methods
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("SET REFERENTIAL_INTEGRITY FALSE");
+            stmt.execute("TRUNCATE TABLE file_chunks");
+            stmt.execute("TRUNCATE TABLE files");
+            stmt.execute("TRUNCATE TABLE chunks");
+            stmt.execute("TRUNCATE TABLE snapshots");
+            stmt.execute("SET REFERENTIAL_INTEGRITY TRUE");
+        }
+
+        // Clean up disk chunk storage directory between test methods
+        Path vaultChunks = Path.of(appConfig.getVaultPath()).resolve("chunks");
+        if (Files.exists(vaultChunks)) {
+            try (var s = Files.walk(vaultChunks)) {
+                s.sorted((a, b) -> b.compareTo(a))
+                 .forEach(p -> {
+                     try { Files.deleteIfExists(p); } catch (Exception ignored) {}
+                 });
+            }
+        }
+    }
 
     @Test
     void testFullBackupRestoreByteIdentical(@TempDir Path tempDir) throws IOException {
@@ -70,17 +103,14 @@ class BackupRestoreRetentionIntegrationTest {
 
         byte[] duplicateData = "Deduplication candidate identical content".repeat(40).getBytes();
         Files.write(sourceDir.resolve("doc1.txt"), duplicateData);
-        Files.write(sourceDir.resolve("doc2.txt"), duplicateData); // exact same content
+        Files.write(sourceDir.resolve("doc2.txt"), duplicateData);
 
         int chunksBefore = chunkRepo.findAll().size();
         Snapshot snap = backupService.backup(sourceDir.toString());
         int chunksAfter = chunkRepo.findAll().size();
 
-        // Since both files are identical and chunk size is 1024, only 2 chunks should be added to storage,
-        // and their ref_count will be 2.
         int newChunks = chunksAfter - chunksBefore;
         assertTrue(newChunks > 0);
-        // Verify ref_count is 2
         chunkRepo.findAll().forEach(chunk -> {
             assertTrue(chunk.getRefCount() >= 1);
         });
@@ -99,7 +129,6 @@ class BackupRestoreRetentionIntegrationTest {
         Snapshot snap1 = backupService.backup(sourceDir.toString());
         assertEquals(2, snap1.getFileCount());
 
-        // Wait a bit to ensure distinct timestamps, then modify fileB only
         Thread.sleep(100);
         Files.writeString(fileB, "Updated Content of File B");
 
@@ -118,7 +147,7 @@ class BackupRestoreRetentionIntegrationTest {
 
         // Check verification report before corruption
         var cleanReport = verifyService.verifyAll();
-        assertTrue(cleanReport.isClean());
+        assertTrue(cleanReport.isClean(), "Report should be clean before any corruption");
 
         // Deliberately tamper with one chunk on disk
         var chunk = chunkRepo.findAll().get(0);
