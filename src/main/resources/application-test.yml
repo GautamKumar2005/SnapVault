@@ -1,0 +1,23 @@
+# =============================================================================
+# Test Profile — uses H2 in-memory database (MySQL compatibility mode)
+# =============================================================================
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MYSQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      # H2-compatible schema (no MySQL-specific ENGINE/CHARSET clauses)
+      schema-locations: classpath:schema-h2.sql
+
+snapvault:
+  vault-path: ${java.io.tmpdir}/snapvault-test/vault
+  chunk-size-bytes: 1024              # small chunks for fast tests (1 KB)
+  thread-pool-size: 2
+
+server:
+  port: 0                              # random port for test isolation

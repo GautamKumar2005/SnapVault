@@ -1,0 +1,31 @@
+# =============================================================================
+# SnapVault Application Configuration
+# =============================================================================
+
+spring:
+  # --- DataSource (HikariCP connection pool → MySQL) ---
+  datasource:
+    url: jdbc:mysql://localhost:3306/snapvault?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: snapvault
+    password: snapvault
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10       # max connections in pool
+      minimum-idle: 2             # keep at least 2 idle connections
+      connection-timeout: 30000   # 30s to get a connection before error
+
+  # --- Run schema.sql on startup to create tables ---
+  sql:
+    init:
+      mode: always                           # always run init scripts
+      schema-locations: classpath:schema.sql # our DDL file
+
+# --- SnapVault-specific settings ---
+snapvault:
+  vault-path: ./vault                 # root directory for chunk storage
+  chunk-size-bytes: 1048576           # 1 MB default chunk size
+  thread-pool-size: 4                 # parallel threads for chunking/hashing
+
+# --- Server port for REST API ---
+server:
+  port: 8080

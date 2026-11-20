@@ -1,0 +1,44 @@
+name: SnapVault CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpassword
+          MYSQL_DATABASE: snapvault
+          MYSQL_USER: snapvault
+          MYSQL_PASSWORD: snapvault
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Build and run tests with Maven
+        run: mvn verify -B
+        env:
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/snapvault?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+          SPRING_DATASOURCE_USERNAME: snapvault
+          SPRING_DATASOURCE_PASSWORD: snapvault
+
+      - name: Build Docker image
+        run: docker build -t snapvault:latest .
