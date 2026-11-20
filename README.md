@@ -4,6 +4,25 @@ SnapVault is a high-performance, content-addressable backup engine built in Java
 
 ---
 
+## 👥 Team & Individual Contribution
+
+This project was built collaboratively as a team engineering initiative to simulate modern enterprise storage and data protection architectures (e.g., Rubrik, Cohesity).
+
+### **My Key Contributions (What I Owned & Implemented):**
+- **Core Chunking & Storage Engine (`com.snapvault.chunking`, `com.snapvault.storage`):**
+  - Implemented the `ChunkingEngine` to stream-split files into configurable fixed-size chunks (1 MB default) and compute deterministic SHA-256 hashes.
+  - Designed the `LocalDiskChunkStore` using content-addressable storage layout (`vault/chunks/<prefix>/<hash>`) to prevent filesystem saturation.
+  - Implemented the crash-safe **Write-to-Temp & Atomic Move (`Files.move(..., ATOMIC_MOVE)`)** pattern ensuring zero half-written chunks or race collisions during concurrent backups.
+- **Incremental Backup Comparison Logic (`com.snapvault.service.BackupService`):**
+  - Engineered the metadata check using `(size, last_modified)` against the latest snapshot, allowing unchanged files to bypass disk I/O and achieve **~19x faster** incremental backups.
+- **Database Catalog & JDBC Performance Optimization (`com.snapvault.catalog`):**
+  - Wrote raw SQL schemas and indexing strategies with HikariCP (avoiding heavy JPA reflection).
+  - Identified and fixed the **N+1 JDBC round-trip bottleneck** using batch statements (`addBatch()` / `executeBatch()`), slashing insert overhead by ~95%.
+- **Benchmarking & Test Automation:**
+  - Authored the real-data 500 MB benchmark suite measuring multi-threaded throughput and real deduplication ratios.
+
+---
+
 ## 1. Why Deduplication Matters
 
 In modern storage and backup architectures (e.g. enterprise systems like Rubrik, Cohesity, Borg):
